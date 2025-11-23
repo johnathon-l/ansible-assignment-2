@@ -1,0 +1,88 @@
+- name: Configure three loopback interfaces for each router
+  hosts: Core-Router-East, Core-Router-West 
+  gather_facts: no
+  tasks:
+    - name: Set loopback IP based on hostname
+      set_fact:
+        loopback_suffix: "{{ '1' if 'East' in inventory_hostname else '2' }}"
+
+    - name: Ensure Ethernet0/0 is up (already configured with management IP)
+      ios_config:
+        lines:
+          - no shutdown
+        parents: interface Ethernet0/0
+      register: link_result
+    - name: Debug link interface result
+      debug:
+        var: link_result
+
+    - name: Set loopback interface 0
+      ios_config:
+        lines:
+          - ip address 10.0.0.{{ loopback_suffix }} 255.255.255.255
+        parents: interface Loopback0
+      register: config_result
+    - name: Debug config result
+      debug:
+        var: config_result
+    - name: Set loopback interface 1  
+      ios_config:
+        lines:
+          - ip address 10.1.1.{{ loopback_suffix }} 255.255.255.255
+        parents: interface Loopback1
+      register: config_result
+    - name: Debug config result
+      debug:
+        var: config_result
+    - name: Set loopback interface 2
+      ios_config:
+        lines:
+          - ip address 10.2.2.{{ loopback_suffix }} 255.255.255.255
+        parents: interface Loopback2
+      register: config_result
+    - name: Debug config result
+      debug:
+        var: config_result
+    - name: Verify loopback interface configuration
+      ios_command:
+        commands:
+          - show ip interface brief
+      register: output
+    - name: Debug output
+      debug:
+        var: output.stdout_lines
+
+- name: Configure EIGRP and advertise all networks
+  hosts: Core-Router-East, Core-Router-West
+  gather_facts: no
+  tasks:
+    - name: Configure EIGRP
+      ios_config:
+        lines:
+          - network 10.0.0.0 0.0.0.255
+          - network 10.1.1.0 0.0.0.255
+          - network 10.2.2.0 0.0.0.255
+          - network 192.168.100.0 0.0.0.255
+        parents: router eigrp 1
+      register: config_result
+    - name: Debug config result
+      debug:
+        var: config_result
+
+    - name: Verify EIGRP neighbors
+      ios_command:
+        commands:
+          - show ip eigrp neighbors
+      register: eigrp_neighbors
+    - name: Debug EIGRP neighbors output
+      debug:
+        var: eigrp_neighbors.stdout_lines
+    
+    - name: Verify EIGRP routes
+      ios_command:
+        commands:
+          - show ip route eigrp
+      register: eigrp_routes
+    - name: Debug EIGRP routes output
+      debug:
+        var: eigrp_routes.stdout_lines
